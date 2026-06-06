@@ -1,91 +1,239 @@
-# Cluster Bootstrap Repository
+# Cluster Bootstrap Repository - App of Apps Pattern with ArgoCD
 
-## Overview
+## Introduction
 
-This repository implements a GitOps-based Kubernetes bootstrap architecture using ArgoCD.
+This repository demonstrates cluster bootstrapping using the ArgoCD App of Apps pattern.
 
-The design follows the App of Apps pattern, where a single ArgoCD Root Application manages all platform applications through Git.
+The objective is to manage an entire Kubernetes cluster from Git using a hierarchical GitOps architecture.
 
-Architecture:
+This repository builds on concepts learned in the previous repository:
 
-Git Repository
-→ Root Application
-→ ApplicationSet
-→ Generated Applications
-→ Helm Charts
-→ Kubernetes Resources
+```text
+helm-gitops-lab
+```
 
-The objective is to bootstrap and manage an entire Kubernetes cluster from Git with minimal manual intervention.
+which introduced:
+
+* Helm
+* ArgoCD Applications
+* ApplicationSets
+* Git Directory Generators
+* Multi-Environment Deployments
+
+This repository introduces:
+
+* App of Apps Pattern
+* Root Applications
+* Cluster Bootstrap Architecture
+* GitOps Hierarchies
+* Platform-Level GitOps Management
 
 ---
 
-## Repository Structure
+# Architecture Overview
+
+Traditional Application Deployment:
+
+```text
+Git
+  ↓
+Application
+  ↓
+Workload
+```
+
+ApplicationSet Deployment:
+
+```text
+Git
+  ↓
+ApplicationSet
+  ↓
+Applications
+  ↓
+Workloads
+```
+
+App of Apps Deployment:
+
+```text
+Git Repository
+      ↓
+Root Application
+      ↓
+ApplicationSet
+      ↓
+Applications
+      ↓
+Helm Charts
+      ↓
+Kubernetes Resources
+```
+
+This allows an entire cluster to be reconstructed from Git.
+
+---
+
+# Repository Structure
 
 ```text
 cluster-bootstrap/
-└── applications/
+
+└── applications
     └── nginx-appset.yaml
 ```
 
-### applications/
+---
 
-Contains ArgoCD Application and ApplicationSet manifests that define what should exist in the cluster.
+# What Is Stored In This Repository?
+
+This repository stores:
+
+* ArgoCD Applications
+* ArgoCD ApplicationSets
+* Platform Bootstrap Configuration
+
+This repository does NOT store:
+
+* Helm Charts
+* Application Source Code
+* Environment Values
+
+Those remain in:
+
+```text
+helm-gitops-lab
+```
 
 ---
 
-## Components
+# Root Application
 
-### Root Application
-
-The Root Application is manually created once.
+The Root Application is the only object manually applied to the cluster.
 
 Purpose:
 
-* Monitors this repository
-* Synchronizes manifests under `applications/`
-* Creates and manages child resources
+* Watches this repository
+* Synchronizes Application definitions
+* Creates ApplicationSets
+* Maintains desired state
 
-Example:
+Architecture:
 
 ```text
 root-app
     ↓
 nginx-appset
+    ↓
+nginx-dev
+nginx-qa
+nginx-prod
+nginx-perf
 ```
 
 ---
 
-### ApplicationSet
+# Root Application YAML
 
-The repository currently contains:
+Create:
+
+```bash
+nano root-app.yaml
+```
+
+Contents:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: root-app
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<username>/cluster-bootstrap.git
+    targetRevision: HEAD
+    path: applications
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+```
+
+Replace:
 
 ```text
-nginx-appset
+<username>
+```
+
+with your GitHub username.
+
+---
+
+# ApplicationSet
+
+Current repository contains:
+
+```text
+nginx-appset.yaml
 ```
 
 The ApplicationSet uses:
 
-* Git Generator
+* Git Directory Generator
 * Go Templates
-* Helm
+* Helm Integration
 
 Purpose:
 
-* Automatically discover environments from Git
-* Generate ArgoCD Applications
-* Reduce repetitive application definitions
+```text
+Git Directories
+      ↓
+Generate Applications
+      ↓
+Deploy Workloads
+```
 
 ---
 
-## Environment Discovery
+# ApplicationSet YAML
 
-The ApplicationSet scans:
+Create:
+
+```bash
+nano applications/nginx-appset.yaml
+```
+
+Contents:
+
+```yaml
+Copy from this repo
+```
+
+---
+
+# Environment Discovery
+
+ApplicationSet scans:
 
 ```text
 environment/*
 ```
 
-inside the application repository.
+inside:
+
+```text
+helm-gitops-lab
+```
 
 Example:
 
@@ -97,170 +245,369 @@ environment/
 └── perf/
 ```
 
-Each directory represents one deployment environment.
-
-When a new directory is added:
+Generated Applications:
 
 ```text
-environment/staging/
-```
-
-the ApplicationSet automatically generates:
-
-```text
-nginx-staging
-```
-
-without modifying the ApplicationSet itself.
-
----
-
-## ArgoCD Features Used
-
-### Auto Sync
-
-Automatically applies Git changes to the cluster.
-
-### Self Heal
-
-Restores resources when manual modifications create configuration drift.
-
-Example:
-
-```bash
-kubectl scale deployment ...
-```
-
-ArgoCD automatically restores the desired state.
-
-### Prune
-
-Removes resources that are deleted from Git.
-
----
-
-## Go Template Usage
-
-ArgoCD version:
-
-```text
-v3.x
-```
-
-ApplicationSet uses:
-
-```yaml
-goTemplate: true
-```
-
-Template examples:
-
-```yaml
-{{ .path.basename }}
-{{ .path.path }}
+nginx-dev
+nginx-qa
+nginx-prod
+nginx-perf
 ```
 
 ---
 
-## Bootstrap Procedure
+# Bootstrap Procedure
 
-### Prerequisites
+## Prerequisites
 
 * Kubernetes Cluster
 * ArgoCD Installed
-* Git Repository Accessible
+* GitHub Repository Accessible
+* helm-gitops-lab Repository Available
 
-### Step 1
+---
 
-Deploy Root Application:
+## Step 1 - Verify ArgoCD
+
+```bash
+kubectl get pods -n argocd
+```
+
+Expected:
+
+```text
+argocd-server
+argocd-repo-server
+argocd-application-controller
+argocd-applicationset-controller
+```
+
+---
+
+## Step 2 - Create Namespaces
+
+```bash
+kubectl create namespace dev
+kubectl create namespace qa
+kubectl create namespace prod
+kubectl create namespace perf
+```
+
+Verify:
+
+```bash
+kubectl get ns
+```
+
+---
+
+## Step 3 - Deploy Root Application
+
+Apply:
 
 ```bash
 kubectl apply -f root-app.yaml
 ```
 
-### Step 2
-
-Verify Root Application:
+Verify:
 
 ```bash
 kubectl get applications -n argocd
 ```
 
-### Step 3
+Expected:
 
-Verify ApplicationSet:
+```text
+root-app
+```
+
+---
+
+## Step 4 - Verify ApplicationSet Creation
+
+Wait for reconciliation.
+
+Verify:
 
 ```bash
 kubectl get applicationsets -n argocd
 ```
 
-### Step 4
+Expected:
 
-Verify Generated Applications:
+```text
+nginx-appset
+```
+
+---
+
+## Step 5 - Verify Generated Applications
 
 ```bash
 kubectl get applications -n argocd
 ```
 
----
-
-## Tested Scenarios
-
-Verified:
-
-* Root Application synchronization
-* ApplicationSet generation
-* Git Directory Generator
-* Helm deployment
-* Multi-environment deployment
-* Auto Sync
-* Self Heal
-* Prune
-* Environment auto-discovery
-
-Example:
-
-Adding:
+Expected:
 
 ```text
-environment/perf/
-```
-
-automatically generated:
-
-```text
+root-app
+nginx-dev
+nginx-qa
+nginx-prod
 nginx-perf
 ```
 
-without any ApplicationSet modifications.
+---
+
+## Step 6 - Verify Deployments
+
+```bash
+kubectl get deploy -A
+```
+
+Expected:
+
+```text
+deployments running in:
+
+dev
+qa
+prod
+perf
+```
 
 ---
 
-## Learning Outcomes
+# Auto Sync Demonstration
 
-This repository demonstrates:
+Modify:
 
-* App of Apps pattern
+```text
+environment/dev/values.yaml
+```
+
+Example:
+
+```yaml
+replicaCount: 4
+```
+
+Commit and push.
+
+Verify:
+
+```bash
+kubectl get deploy -n dev
+```
+
+ArgoCD automatically updates the deployment.
+
+---
+
+# Self Heal Demonstration
+
+Manually scale:
+
+```bash
+kubectl scale deployment nginx-dev-nginx-helm \
+--replicas=10 \
+-n dev
+```
+
+Verify:
+
+```bash
+kubectl get deploy -n dev
+```
+
+After reconciliation:
+
+```text
+replicas restored from Git
+```
+
+---
+
+# Prune Demonstration
+
+Delete deployment from Git.
+
+Commit and push.
+
+Verify:
+
+```bash
+kubectl get deploy -A
+```
+
+ArgoCD automatically removes deleted resources.
+
+---
+
+# Automatic Environment Discovery
+
+Create:
+
+```bash
+mkdir -p environment/staging
+```
+
+Create:
+
+```bash
+nano environment/staging/values.yaml
+```
+
+Example:
+
+```yaml
+replicaCount: 4
+```
+
+Commit and push.
+
+Create namespace:
+
+```bash
+kubectl create namespace staging
+```
+
+Verify:
+
+```bash
+kubectl get applications -n argocd
+```
+
+Expected:
+
+```text
+nginx-staging
+```
+
+No ApplicationSet modifications required.
+
+---
+
+# Common Issue Encountered
+
+ArgoCD 3.x requires:
+
+```yaml
+goTemplate: true
+```
+
+Incorrect:
+
+```yaml
+{{path.basename}}
+```
+
+Correct:
+
+```yaml
+{{ .path.basename }}
+```
+
+Incorrect:
+
+```yaml
+{{path.path}}
+```
+
+Correct:
+
+```yaml
+{{ .path.path }}
+```
+
+Without this configuration:
+
+```text
+{{path.path}}/values.yaml
+```
+
+remains unresolved and causes Helm rendering failures.
+
+---
+
+# Cleanup Procedure
+
+Delete Root Application:
+
+```bash
+kubectl delete application root-app -n argocd
+```
+
+Verify:
+
+```bash
+kubectl get applications -n argocd
+```
+
+Expected:
+
+```text
+No resources found
+```
+
+Delete ApplicationSet if still present:
+
+```bash
+kubectl delete applicationset nginx-appset -n argocd
+```
+
+Delete namespaces:
+
+```bash
+kubectl delete namespace dev
+kubectl delete namespace qa
+kubectl delete namespace prod
+kubectl delete namespace perf
+kubectl delete namespace staging
+```
+
+Verify cleanup:
+
+```bash
+kubectl get applications -n argocd
+kubectl get applicationsets -n argocd
+```
+
+Expected:
+
+```text
+No resources found
+```
+
+---
+
+# Learning Outcomes
+
+After completing this lab you should understand:
+
+* App of Apps Pattern
+* Root Applications
 * ApplicationSets
-* Git Directory Generator
-* Helm integration
-* Multi-environment GitOps
-* Automated Kubernetes deployment using ArgoCD
+* Git Directory Generators
+* Go Templates
+* Helm Integration
+* Multi-Environment GitOps
+* Cluster Bootstrapping
+* GitOps Hierarchies
+* Automated Kubernetes Management
 
 ---
 
-## Future Enhancements
+# Next Steps
 
-Potential future additions:
+Recommended next topics:
 
 * ArgoCD Projects
-* Multi-cluster deployments
-* CI/CD integration
+* Multi-Cluster GitOps
+* CI/CD + GitOps Integration
 * ArgoCD Image Updater
 * Argo Rollouts
 * Progressive Delivery
-* Cluster add-on management
-* Platform bootstrap automation
+* Platform Engineering Workflows
 
-```
-```
+This repository represents a production-style cluster bootstrap architecture and serves as the foundation for larger GitOps-managed Kubernetes environments.
