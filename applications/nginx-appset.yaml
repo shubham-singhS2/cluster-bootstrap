@@ -5,6 +5,7 @@ metadata:
   namespace: argocd
 
 spec:
+  goTemplate: true
   generators:
   - git:
       repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
@@ -15,7 +16,7 @@ spec:
 
   template:
     metadata:
-      name: 'nginx-{{path.basename}}'
+      name: 'nginx-{{ .path.basename }}'
 
     spec:
       project: default
@@ -27,11 +28,11 @@ spec:
 
         helm:
           valueFiles:
-          - '../{{path.path}}/values.yaml'
+          - '../{{ .path.path }}/values.yaml'
 
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{ .path.basename }}'
 
       syncPolicy:
         automated:
