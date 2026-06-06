@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-appset
+  namespace: argocd
+
+spec:
+  generators:
+  - git:
+      repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
+      revision: HEAD
+
+      directories:
+      - path: environment/*
+
+  template:
+    metadata:
+      name: 'nginx-{{path.basename}}'
+
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/shubham-singhS2/helm-gitops-lab.git
+        targetRevision: HEAD
+        path: nginx-helm
+
+        helm:
+          valueFiles:
+          - '../{{path.path}}/values.yaml'
+
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
